@@ -66,7 +66,7 @@ body{background:var(--bg);font-family:'Nunito',sans-serif;min-height:100vh;displ
 .hdr-len{font-size:10px;color:var(--text-dim);}
 .hdr-time{font-family:'Fredoka One',cursive;font-size:14px;color:var(--text-dim);margin-left:auto;}
 .canvas-wrap{position:relative;width:100%;}
-canvas{display:block;width:100%;background:#0a1220;cursor:pointer;}
+canvas{display:block;width:100%;background:#0a1220;}
 .game-overlay{position:absolute;inset:0;background:rgba(10,12,20,0.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:30;padding:20px;}
 .go-title{font-family:'Fredoka One',cursive;font-size:2rem;color:var(--text);text-align:center;}
 .results{width:100%;max-width:360px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
@@ -92,10 +92,6 @@ canvas{display:block;width:100%;background:#0a1220;cursor:pointer;}
 .toast{position:fixed;top:52px;left:50%;transform:translateX(-50%);padding:7px 20px;border-radius:20px;font-weight:700;font-size:13px;z-index:999;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap;max-width:90vw;text-overflow:ellipsis;overflow:hidden;}
 .toast.show{opacity:1;}
 
-/* ── MODE SELECTOR ── */
-.mode-buttons{display:flex;gap:10px;margin-top:5px;}
-.mode-buttons .btn{flex:1;padding:10px;font-size:13px;}
-
 @media(max-width:500px){.logo{font-size:2.2rem;}.room-code-display{font-size:2rem;}.dpad-wrap{display:block;}}
 @media(min-width:501px) and (pointer:coarse){.dpad-wrap{display:block;}}
 </style>
@@ -111,33 +107,17 @@ canvas{display:block;width:100%;background:#0a1220;cursor:pointer;}
 
   <div class="card">
     <div class="card-title">Your Name</div>
-    <input class="inp" id="myName" placeholder="Enter your name" maxlength="14" value="Player">
+    <input class="inp" id="myName" placeholder="Enter your name" maxlength="14">
 
-    <div class="divider">choose mode</div>
-    
-    <div class="mode-buttons">
-      <button class="btn btn-green" onclick="startSinglePlayer()">🎮 Single Player</button>
-      <button class="btn btn-blue" onclick="showMultiplayerMenu()">👥 Multiplayer</button>
-    </div>
+    <div class="divider">choose your role</div>
+
+    <button class="btn btn-green" onclick="showHost()">🏠 Host a Game</button>
+    <button class="btn btn-blue" onclick="showJoin()">🔗 Join with Room Code</button>
   </div>
 
   <div class="qr-hint">
-    💡 <b>How to play:</b><br>
-    • Eat 🍎 for points and growth<br>
-    • Avoid 💩 and other snakes<br>
-    • Use arrow keys or on-screen D-pad
-  </div>
-</div>
-
-<!-- ══ MULTIPLAYER MENU ══════════════════════════════════════ -->
-<div class="screen" id="multiplayerMenuScreen">
-  <div class="logo" style="font-size:1.8rem;">👥 Multiplayer</div>
-
-  <div class="card">
-    <div class="card-title">Choose your role</div>
-    <button class="btn btn-green" onclick="showHost()">🏠 Host a Game</button>
-    <button class="btn btn-blue" onclick="showJoin()">🔗 Join with Room Code</button>
-    <button class="btn btn-ghost" onclick="backToMenu()">← Back</button>
+    💡 <b>How to play across devices:</b><br>
+    One person hosts → shares the 6-letter room code → up to 3 others join on their own phone or laptop. All on the same WiFi or internet.
   </div>
 </div>
 
@@ -154,7 +134,7 @@ canvas{display:block;width:100%;background:#0a1220;cursor:pointer;}
     <div class="player-list" id="hostPlayerList"></div>
     <div class="status-bar" id="hostStatus">Waiting for players to join…</div>
 
-    <button class="btn btn-green" id="hostStartBtn" onclick="hostStartGame()" disabled style="opacity:.4;">▶ Start Game (need 2 players)</button>
+    <button class="btn btn-green" id="hostStartBtn" onclick="hostStartGame()" disabled style="opacity:.4;">▶ Start Game (need 2+ players)</button>
     <button class="btn btn-ghost" onclick="backToMenu()">← Back</button>
   </div>
 </div>
@@ -241,7 +221,7 @@ canvas{display:block;width:100%;background:#0a1220;cursor:pointer;}
 //  CONSTANTS & CONFIG
 // ══════════════════════════════════════════════════════════════
 const CELL = 22;
-const TICK = 150; // FASTER: 150ms instead of 200ms
+const TICK = 200; // ms per game tick — comfortable speed
 const P_COLORS   = ['#3fb950','#f472b6','#fbbf24','#58a6ff'];
 const P_HEAD_COL = ['#7ee787','#f9a8d4','#fde68a','#93c5fd'];
 const P_STARTS   = [
@@ -270,21 +250,18 @@ const BAD_ITEMS = [
 //  STATE
 // ══════════════════════════════════════════════════════════════
 let peer = null, hostConn = null;
-let guestConns = {};
+let guestConns = {}; // peerId -> conn  (host side)
 let isHost = false;
-let isMultiplayer = false;
 let myName = '';
 let myPeerId = '';
-let roomCode = '';
-let players = [];
+let roomCode = ''; // host peer id shortened
+let players = []; // [{id,name,color,score,body,dx,dy,ndx,ndy,alive}]
 let myIndex = -1;
 let foods = [];
 let gameRunning = false;
 let gameTimer = null, elapsed = 0, timerInterval;
 let COLS = 30, ROWS = 24;
 let lastDirTime = 0;
-let invincibleFrames = false;
-let invincibleTimer = null;
 
 // ══════════════════════════════════════════════════════════════
 //  SCREEN HELPERS
@@ -302,7 +279,6 @@ function showScreen(id){
 function backToMenu(){
   if(gameTimer) clearInterval(gameTimer);
   if(timerInterval) clearInterval(timerInterval);
-  if(invincibleTimer) clearTimeout(invincibleTimer);
   gameRunning = false;
   
   if(peer){
@@ -318,38 +294,7 @@ function backToMenu(){
   myIndex = -1;
   players = [];
   foods = [];
-  isMultiplayer = false;
   showScreen('menuScreen');
-}
-
-function showMultiplayerMenu() {
-  myName = document.getElementById('myName').value.trim() || 'Player';
-  showScreen('multiplayerMenuScreen');
-}
-
-// ══════════════════════════════════════════════════════════════
-//  SINGLE PLAYER MODE
-// ══════════════════════════════════════════════════════════════
-function startSinglePlayer() {
-  myName = document.getElementById('myName').value.trim() || 'Player';
-  isMultiplayer = false;
-  isHost = false;
-  
-  // Create single player
-  players = [{
-    id: 'single',
-    name: myName,
-    color: P_COLORS[0],
-    score: 0,
-    body: [],
-    dx: 1, dy: 0,
-    ndx: 1, ndy: 0,
-    alive: true
-  }];
-  myIndex = 0;
-  
-  initGameState();
-  startGameScreen();
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -394,7 +339,6 @@ function cleanup(){
 function showHost(){
   myName = document.getElementById('myName').value.trim() || 'Player 1';
   isHost = true;
-  isMultiplayer = true;
   showScreen('hostScreen');
   document.getElementById('roomCodeDisplay').textContent='......';
   document.getElementById('hostStatus').textContent='Creating room…';
@@ -414,7 +358,7 @@ function showHost(){
   peer.on('connection', conn=>{
     conn.on('open',()=>{
       if(gameRunning){ conn.send({type:'full'}); conn.close(); return; }
-      if(players.length>=2){ conn.send({type:'full'}); conn.close(); return; }
+      if(players.length>=4){ conn.send({type:'full'}); conn.close(); return; }
       guestConns[conn.peer]=conn;
       conn.on('data', d=>handleGuestMsg(conn.peer, d));
       conn.on('close',()=>{ delete guestConns[conn.peer]; removePeer(conn.peer); renderHostLobby(); });
@@ -447,7 +391,7 @@ function renderHostLobby(){
     </div>`).join('');
   const st=document.getElementById('hostStatus');
   const btn=document.getElementById('hostStartBtn');
-  if(players.length===1){ st.textContent='Waiting for player to join… (1/2)'; btn.disabled=true; btn.style.opacity='.4'; }
+  if(players.length===1){ st.textContent='Waiting for players… (1/4)'; btn.disabled=true; btn.style.opacity='.4'; }
   else { st.textContent=`${players.length} players ready!`; st.className='status-bar ok'; btn.disabled=false; btn.style.opacity='1'; }
 }
 
@@ -469,7 +413,6 @@ function hostStartGame(){
 function showJoin(){
   myName = document.getElementById('myName').value.trim() || ('Player '+(Math.floor(Math.random()*900)+100));
   isHost = false;
-  isMultiplayer = true;
   showScreen('joinScreen');
   document.getElementById('joinStatus').textContent='';
 }
@@ -581,24 +524,12 @@ const ctx=canvas.getContext('2d');
 
 function initGameState(){
   calcDims();
-  
-  // Spawn snakes far apart to avoid instant collision
   players.forEach((p,i)=>{
-    let sx, sy;
-    if(players.length === 1) {
-      // Single player: center
-      sx = Math.floor(COLS / 2);
-      sy = Math.floor(ROWS / 2);
-    } else {
-      // Multiplayer: spawn on opposite sides
-      if(i === 0) {
-        sx = Math.floor(COLS * 0.25);
-        sy = Math.floor(ROWS / 2);
-      } else {
-        sx = Math.floor(COLS * 0.75);
-        sy = Math.floor(ROWS / 2);
-      }
-    }
+    const margin = 3;
+    const maxX = COLS - margin - 5;
+    const minX = margin;
+    const sx = Math.floor(minX + (Math.random() * (maxX - minX)));
+    const sy = Math.floor(ROWS / 2);
     
     const body = [];
     const startDir = P_STARTS[i];
@@ -616,19 +547,10 @@ function initGameState(){
     p.score = 0;
     p.alive = true;
   });
-  
   foods=[];
-  // More food for faster gameplay
-  const total = Math.min(12 + players.length * 3, 20);
-  for(let i=0;i<total;i++) spawnFood(i<Math.ceil(total*.6));
+  const total=Math.min(8+players.length*2,16);
+  for(let i=0;i<total;i++) spawnFood(i<Math.ceil(total*.62));
   elapsed=0;
-  
-  // Grant invincibility frames at start to prevent instant death
-  invincibleFrames = true;
-  if(invincibleTimer) clearTimeout(invincibleTimer);
-  invincibleTimer = setTimeout(() => {
-    invincibleFrames = false;
-  }, 2000);
 }
 
 function spawnFood(good){
@@ -681,7 +603,7 @@ function deserializeState(s){
 }
 
 // ══════════════════════════════════════════════════════════════
-//  GAME LOOP
+//  GAME LOOP (HOST ONLY)
 // ══════════════════════════════════════════════════════════════
 function startGameScreen(){
   calcDims();
@@ -689,42 +611,38 @@ function startGameScreen(){
   document.getElementById('dpadWrap').style.display = '';
   updateHdr();
   renderGame();
-  
-  // For single player or host, run the game loop
-  if(!isMultiplayer || isHost) {
-    clearInterval(gameTimer); 
-    clearInterval(timerInterval);
-    gameRunning=true; 
-    elapsed=0;
-    
-    timerInterval=setInterval(()=>{
-      elapsed++;
-      const m=Math.floor(elapsed/60),s=elapsed%60;
-      document.getElementById('hdrTime').textContent=`${m}:${String(s).padStart(2,'0')}`;
-    },1000);
+  if(!isHost) return;
 
-    gameTimer=setInterval(()=>{
-      if(!gameRunning) return;
-      tick();
-      foods.forEach(f=>f.pulse=(f.pulse||0)+0.15);
-      const alive = players.filter(p => p.alive).length;
-      
-      if(alive === 0) {
-        gameRunning=false;
-        clearInterval(gameTimer); 
-        clearInterval(timerInterval);
-        if(isHost) broadcastAll({type:'game_over', gameState:serializeState()});
-        showGameOver();
-      } else if(isHost) {
-        broadcastAll({type:'tick', gameState:serializeState()});
-        renderGame();
-        updateHdr();
-      } else {
-        renderGame();
-        updateHdr();
-      }
-    }, TICK);
-  }
+  clearInterval(gameTimer); clearInterval(timerInterval);
+  gameRunning=true; elapsed=0;
+  timerInterval=setInterval(()=>{
+    elapsed++;
+    const m=Math.floor(elapsed/60),s=elapsed%60;
+    document.getElementById('hdrTime').textContent=`${m}:${String(s).padStart(2,'0')}`;
+  },1000);
+
+  gameTimer=setInterval(()=>{
+    if(!gameRunning) return;
+    tick();
+    foods.forEach(f=>f.pulse=(f.pulse||0)+0.1);
+    const alive = players.filter(p => p.alive).length;
+    
+    if(alive <= 1 && players.length > 1){
+      gameRunning=false;
+      clearInterval(gameTimer); clearInterval(timerInterval);
+      broadcastAll({type:'game_over', gameState:serializeState()});
+      showGameOver();
+    } else if(alive === 0) {
+      gameRunning=false;
+      clearInterval(gameTimer); clearInterval(timerInterval);
+      broadcastAll({type:'game_over', gameState:serializeState()});
+      showGameOver();
+    } else {
+      broadcastAll({type:'tick', gameState:serializeState()});
+      renderGame();
+      updateHdr();
+    }
+  }, TICK);
 }
 
 function tick(){
@@ -733,28 +651,11 @@ function tick(){
     p.dx=p.ndx; p.dy=p.ndy;
     const head={x:p.body[0].x+p.dx, y:p.body[0].y+p.dy};
 
-    // Wall collision
-    if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS){ 
-      p.alive=false; 
-      return; 
-    }
-    
-    // Self collision (skip head)
-    if(p.body.slice(1).some(b=>b.x===head.x&&b.y===head.y)){ 
-      p.alive=false; 
-      return; 
-    }
-    
-    // Other snakes collision (with invincibility protection)
+    if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS){ p.alive=false; return; }
+    if(p.body.slice(1).some(b=>b.x===head.x&&b.y===head.y)){ p.alive=false; return; }
     for(const other of players){
       if(other===p||!other.alive) continue;
-      if(other.body.some(b=>b.x===head.x&&b.y===head.y)){
-        // Don't die from other snakes during invincibility frames
-        if(!invincibleFrames) {
-          p.alive=false;
-          return;
-        }
-      }
+      if(other.body.some(b=>b.x===head.x&&b.y===head.y)){ p.alive=false; return; }
     }
 
     p.body.unshift(head);
@@ -774,17 +675,11 @@ function tick(){
           if(p.body.length > 3) p.body.pop();
         }
       }
-      // Spawn food more frequently
-      spawnFood(Math.random() > 0.35);
+      spawnFood(Math.random() > 0.38);
     } else {
       p.body.pop();
     }
   });
-  
-  // Spawn additional food if there's too little
-  if(foods.length < 6) {
-    spawnFood(true);
-  }
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -811,7 +706,7 @@ function sendDir(dir){
     setTimeout(() => { if(dpBtn) dpBtn.style.transform = ''; }, 100);
   }
   
-  if(!isMultiplayer || isHost){ 
+  if(isHost){ 
     applyDir(me, dir); 
   } else if(hostConn){ 
     hostConn.send({type:'dir', dir}); 
@@ -823,38 +718,6 @@ document.addEventListener('keydown',e=>{
              w:'up',s:'down',a:'left',d:'right',W:'up',S:'down',A:'left',D:'right'};
   const dir=map[e.key];
   if(dir){ e.preventDefault(); sendDir(dir); }
-});
-
-// Touch controls for canvas swipe
-let touchStart = null;
-canvas.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  touchStart = {
-    x: e.touches[0].clientX - rect.left,
-    y: e.touches[0].clientY - rect.top
-  };
-});
-
-canvas.addEventListener('touchend', (e) => {
-  if(!touchStart) return;
-  e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  const endX = e.changedTouches[0].clientX - rect.left;
-  const endY = e.changedTouches[0].clientY - rect.top;
-  const dx = endX - touchStart.x;
-  const dy = endY - touchStart.y;
-  
-  if(Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
-  
-  if(Math.abs(dx) > Math.abs(dy)) {
-    if(dx > 0) sendDir('right');
-    else sendDir('left');
-  } else {
-    if(dy > 0) sendDir('down');
-    else sendDir('up');
-  }
-  touchStart = null;
 });
 
 // ══════════════════════════════════════════════════════════════
@@ -870,7 +733,7 @@ function renderGame(){
 
   foods.forEach(f=>{
     const cx=f.x*CELL+CELL/2, cy=f.y*CELL+CELL/2;
-    f.pulse=(f.pulse||0)+.08;
+    f.pulse=(f.pulse||0)+.05;
     const pulse=.88+Math.sin(f.pulse)*.12;
     const rc=f.good?'#3fb950':'#f85149';
     const bg=f.good?'rgba(63,185,80,.18)':'rgba(248,81,73,.18)';
@@ -922,16 +785,6 @@ function renderGame(){
       ctx.fillText(p.name,hx,hy); ctx.globalAlpha=1;
     }
   });
-  
-  // Show invincibility indicator
-  if(invincibleFrames && players[myIndex] && players[myIndex].alive) {
-    ctx.font='bold 16px Nunito';
-    ctx.fillStyle='#58a6ff';
-    ctx.shadowBlur=10;
-    ctx.shadowColor='#58a6ff';
-    ctx.fillText('🛡️ INVINCIBLE', 10, 30);
-    ctx.shadowBlur=0;
-  }
 }
 
 function updateHdr(){
@@ -960,15 +813,15 @@ function showGameOver(){
       <div class="result-len">🐍${p.body?p.body.length:0}</div>
     </div>`).join('');
   document.getElementById('gameOverlay').style.display='flex';
-  if(isMultiplayer && !isHost) document.getElementById('playAgainBtn').textContent='Wait for host…';
+  if(!isHost) document.getElementById('playAgainBtn').textContent='Wait for host…';
 }
 
 function playAgain(){
-  if(isMultiplayer && !isHost){ showToast('Only the host can restart','info'); return; }
+  if(!isHost){ showToast('Only the host can restart','info'); return; }
   document.getElementById('gameOverlay').style.display='none';
   document.getElementById('dpadWrap').style.display = '';
   initGameState();
-  if(isMultiplayer && isHost) broadcastAll({type:'start', gameState:serializeState()});
+  broadcastAll({type:'start', gameState:serializeState()});
   startGameScreen();
 }
 
