@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Office Snake — Multiplayer</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;
+  --border:#2d333b;--border2:#3d444d;
+  --green:#3fb950;--green-glow:rgba(63,185,80,0.3);
+  --red:#f85149;--red-glow:rgba(248,81,73,0.3);
+  --yellow:#d29922;--blue:#58a6ff;--purple:#bc8cff;
+  --text:#e6edf3;--text-dim:#7d8590;--text-muted:#4a5568;
+}
+body{background:var(--bg);font-family:'Nunito',sans-serif;min-height:100vh;display:flex;flex-direction:column;align-items:center;color:var(--text);padding:0;overflow-x:hidden;}
+
+/* ── SCREENS ── */
+.screen{display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;width:100%;padding:24px;gap:16px;}
+.screen.active{display:flex;}
+
+/* ── LOBBY / MENU ── */
+.logo{font-family:'Fredoka One',cursive;font-size:3rem;color:var(--green);text-shadow:0 0 40px var(--green-glow);letter-spacing:2px;text-align:center;}
+.sub{font-size:14px;color:var(--text-dim);text-align:center;line-height:1.7;max-width:340px;}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:20px 24px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;}
+.card-title{font-size:12px;font-weight:700;color:var(--text-dim);text-transform:uppercase;letter-spacing:.1em;display:flex;align-items:center;gap:6px;}
+.card-title::before{content:'';width:3px;height:14px;background:var(--green);border-radius:2px;display:inline-block;}
+.inp{background:var(--bg3);border:1.5px solid var(--border2);border-radius:10px;padding:10px 14px;color:var(--text);font-family:'Nunito',sans-serif;font-size:15px;font-weight:700;outline:none;width:100%;transition:border-color .2s;}
+.inp:focus{border-color:var(--blue);}
+.inp::placeholder{color:var(--text-muted);font-weight:400;}
+.inp.big{font-size:28px;font-weight:800;letter-spacing:.15em;text-align:center;font-family:'Fredoka One',cursive;}
+.btn{font-family:'Nunito',sans-serif;font-weight:800;font-size:15px;padding:12px 24px;border:none;border-radius:10px;cursor:pointer;width:100%;transition:all .15s;letter-spacing:.03em;}
+.btn-green{background:var(--green);color:#052e16;}
+.btn-green:hover{filter:brightness(1.12);}
+.btn-green:active{transform:scale(.97);}
+.btn-blue{background:var(--blue);color:#0c2040;}
+.btn-blue:hover{filter:brightness(1.12);}
+.btn-blue:active{transform:scale(.97);}
+.btn-ghost{background:transparent;border:1.5px solid var(--border2);color:var(--text-dim);font-size:13px;padding:9px;}
+.btn-ghost:hover{border-color:var(--blue);color:var(--blue);}
+.divider{display:flex;align-items:center;gap:10px;color:var(--text-muted);font-size:12px;}
+.divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border);}
+.room-code-display{font-family:'Fredoka One',cursive;font-size:2.8rem;letter-spacing:.2em;color:var(--green);background:var(--bg3);border:2px dashed var(--green);border-radius:12px;padding:14px 20px;text-align:center;cursor:pointer;user-select:all;transition:background .2s;}
+.room-code-display:hover{background:#0e2218;}
+.copy-hint{font-size:11px;color:var(--text-muted);text-align:center;margin-top:-8px;}
+.player-list{display:flex;flex-direction:column;gap:8px;}
+.player-item{display:flex;align-items:center;gap:10px;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:9px 12px;}
+.player-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.player-item-name{font-weight:700;font-size:14px;flex:1;}
+.player-item-role{font-size:11px;color:var(--text-dim);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px 7px;}
+.status-bar{font-size:12px;color:var(--text-dim);text-align:center;min-height:18px;}
+.status-bar.ok{color:var(--green);}
+.status-bar.err{color:var(--red);}
+.qr-hint{font-size:12px;color:var(--text-dim);text-align:center;line-height:1.6;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px 14px;max-width:420px;}
+
+/* ── GAME SCREEN ── */
+#gameScreen{padding:0;justify-content:flex-start;background:var(--bg);}
+.game-header{width:100%;background:var(--bg2);border-bottom:1px solid var(--border);padding:8px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.hdr-title{font-family:'Fredoka One',cursive;font-size:1.1rem;color:var(--green);}
+.hdr-scores{display:flex;gap:8px;flex:1;flex-wrap:wrap;}
+.hdr-score{display:flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:3px 10px;font-size:13px;font-weight:700;}
+.hdr-dot{width:9px;height:9px;border-radius:50%;}
+.hdr-len{font-size:10px;color:var(--text-dim);}
+.hdr-time{font-family:'Fredoka One',cursive;font-size:14px;color:var(--text-dim);margin-left:auto;}
+.canvas-wrap{position:relative;width:100%;}
+canvas{display:block;width:100%;background:#0a1220;}
+.game-overlay{position:absolute;inset:0;background:rgba(10,12,20,0.94);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:30;padding:20px;}
+.go-title{font-family:'Fredoka One',cursive;font-size:2rem;color:var(--text);text-align:center;}
+.results{width:100%;max-width:360px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+.result-row{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);}
+.result-row:last-child{border-bottom:none;}
+.result-medal{font-size:20px;width:28px;text-align:center;}
+.result-name{font-weight:800;font-size:14px;flex:1;}
+.result-score{font-family:'Fredoka One',cursive;font-size:17px;color:var(--yellow);}
+.result-len{font-size:11px;color:var(--text-dim);}
+.btn-row{display:flex;gap:10px;width:100%;max-width:360px;}
+
+/* ── DPAD (mobile) ── */
+.dpad-wrap{position:fixed;bottom:16px;right:16px;z-index:50;display:none;}
+.dpad{display:grid;grid-template-columns:repeat(3,52px);grid-template-rows:repeat(2,52px);gap:5px;}
+.dp{background:rgba(22,27,34,0.9);border:2px solid var(--border2);border-radius:10px;font-size:22px;color:var(--text);display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none;transition:transform 0.05s;}
+.dp:active{background:var(--bg3);border-color:var(--blue);transform:scale(0.95);}
+
+/* ── WAITING SPINNER ── */
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* ── TOAST ── */
+.toast{position:fixed;top:52px;left:50%;transform:translateX(-50%);padding:7px 20px;border-radius:20px;font-weight:700;font-size:13px;z-index:999;pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap;max-width:90vw;text-overflow:ellipsis;overflow:hidden;}
+.toast.show{opacity:1;}
+
+@media(max-width:500px){.logo{font-size:2.2rem;}.room-code-display{font-size:2rem;}.dpad-wrap{display:block;}}
+@media(min-width:501px) and (pointer:coarse){.dpad-wrap{display:block;}}
+</style>
+</head>
+<body>
+
+<div class="toast" id="toast"></div>
+
+<!-- ══ MENU SCREEN ══════════════════════════════════════════ -->
+<div class="screen active" id="menuScreen">
+  <div class="logo">🐍 Office Snake</div>
+  <div class="sub">Multiplayer across devices — no server needed.<br>Share a room code, everyone joins on their phone.</div>
+
+  <div class="card">
+    <div class="card-title">Your Name</div>
+    <input class="inp" id="myName" placeholder="Enter your name" maxlength="14">
+
+    <div class="divider">choose your role</div>
+
+    <button class="btn btn-green" onclick="showHost()">🏠 Host a Game</button>
+    <button class="btn btn-blue" onclick="showJoin()">🔗 Join with Room Code</button>
+  </div>
+
+  <div class="qr-hint">
+    💡 <b>How to play across devices:</b><br>
+    One person hosts → shares the 6-letter room code → up to 3 others join on their own phone or laptop. All on the same WiFi or internet.
+  </div>
+</div>
+
+<!-- ══ HOST SCREEN ══════════════════════════════════════════ -->
+<div class="screen" id="hostScreen">
+  <div class="logo" style="font-size:1.8rem;">🏠 Host Lobby</div>
+
+  <div class="card">
+    <div class="card-title">Room Code — share this!</div>
+    <div class="room-code-display" id="roomCodeDisplay" onclick="copyCode()">------</div>
+    <div class="copy-hint">Tap to copy • Others enter this on their device</div>
+
+    <div class="card-title" style="margin-top:4px;">Players in lobby</div>
+    <div class="player-list" id="hostPlayerList"></div>
+    <div class="status-bar" id="hostStatus">Waiting for players to join…</div>
+
+    <button class="btn btn-green" id="hostStartBtn" onclick="hostStartGame()" disabled style="opacity:.4;">▶ Start Game (need 2+ players)</button>
+    <button class="btn btn-ghost" onclick="backToMenu()">← Back</button>
+  </div>
+</div>
+
+<!-- ══ JOIN SCREEN ══════════════════════════════════════════ -->
+<div class="screen" id="joinScreen">
+  <div class="logo" style="font-size:1.8rem;">🔗 Join Game</div>
+
+  <div class="card">
+    <div class="card-title">Enter Room Code</div>
+    <input class="inp big" id="roomCodeInput" placeholder="ABC123" maxlength="6" oninput="this.value=this.value.toUpperCase()">
+    <div class="status-bar" id="joinStatus"></div>
+    <button class="btn btn-blue" onclick="joinGame()">→ Join Room</button>
+    <button class="btn btn-ghost" onclick="backToMenu()">← Back</button>
+  </div>
+</div>
+
+<!-- ══ WAITING SCREEN (joined, waiting for host to start) ══ -->
+<div class="screen" id="waitScreen">
+  <div class="spinner"></div>
+  <div style="font-family:'Fredoka One',cursive;font-size:1.4rem;color:var(--green);">Joined! Waiting for host…</div>
+  <div class="player-list" id="waitPlayerList" style="width:100%;max-width:340px;"></div>
+  <div class="status-bar" id="waitStatus">Host will start the game soon</div>
+  <button class="btn btn-ghost" style="max-width:200px;margin-top:8px;" onclick="backToMenu()">← Leave</button>
+</div>
+
+<!-- ══ GAME SCREEN ══════════════════════════════════════════ -->
+<div class="screen" id="gameScreen">
+  <div class="game-header">
+    <div class="hdr-title">🐍 Office Snake</div>
+    <div class="hdr-scores" id="hdrScores"></div>
+    <div class="hdr-time" id="hdrTime">0:00</div>
+  </div>
+  <div class="canvas-wrap" id="canvasWrap">
+    <canvas id="gc"></canvas>
+    <div class="game-overlay" id="gameOverlay" style="display:none;">
+      <div class="go-title" id="goTitle">Game Over</div>
+      <div class="results" id="goResults"></div>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="playAgain()" id="playAgainBtn">▶ Play Again</button>
+        <button class="btn btn-ghost" onclick="backToMenu()">↺ Menu</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DPAD (mobile) ══ -->
+<div class="dpad-wrap" id="dpadWrap">
+  <div class="dpad">
+    <div></div>
+    <div class="dp" id="dpU" onclick="sendDir('up')">↑</div>
+    <div></div>
+    <div class="dp" id="dpL" onclick="sendDir('left')">←</div>
+    <div class="dp" id="dpD" onclick="sendDir('down')">↓</div>
+    <div class="dp" id="dpR" onclick="sendDir('right')">→</div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+//  POLYFILL FOR roundRect
+// ══════════════════════════════════════════════════════════════
+(function() {
+  if (!CanvasRenderingContext2D.prototype.roundRect) {
+    CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+      if (w < 2 * r) r = w / 2;
+      if (h < 2 * r) r = h / 2;
+      this.moveTo(x + r, y);
+      this.lineTo(x + w - r, y);
+      this.quadraticCurveTo(x + w, y, x + w, y + r);
+      this.lineTo(x + w, y + h - r);
+      this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      this.lineTo(x + r, y + h);
+      this.quadraticCurveTo(x, y + h, x, y + h - r);
+      this.lineTo(x, y + r);
+      this.quadraticCurveTo(x, y, x + r, y);
+      this.closePath();
+      return this;
+    };
+  }
+})();
+
+// ══════════════════════════════════════════════════════════════
+//  CONSTANTS & CONFIG
+// ══════════════════════════════════════════════════════════════
+const CELL = 22;
+const TICK = 200; // ms per game tick — comfortable speed
+const P_COLORS   = ['#3fb950','#f472b6','#fbbf24','#58a6ff'];
+const P_HEAD_COL = ['#7ee787','#f9a8d4','#fde68a','#93c5fd'];
+const P_STARTS   = [
+  {dx:1, dy:0},  // P1 moves right
+  {dx:-1,dy:0},  // P2 moves left
+  {dx:0, dy:1},  // P3 moves down
+  {dx:0, dy:-1}, // P4 moves up
+];
+
+const GOOD_ITEMS = [
+  {e:'🍎',n:'Apple',      p:10,g:1},{e:'🥗',n:'Salad',    p:15,g:1},
+  {e:'☕',n:'Coffee',     p:12,g:1},{e:'🍌',n:'Banana',   p:8, g:1},
+  {e:'📎',n:'Paperclip',  p:5, g:1},{e:'📝',n:'Notepad',  p:7, g:1},
+  {e:'💡',n:'Idea',       p:25,g:2},{e:'🏆',n:'Trophy',   p:50,g:3},
+  {e:'🥪',n:'Sandwich',   p:10,g:1},{e:'💻',n:'Laptop',   p:30,g:2},
+  {e:'🍵',n:'Tea',        p:8, g:1},{e:'🍇',n:'Grapes',   p:9, g:1},
+];
+const BAD_ITEMS = [
+  {e:'🗑️',n:'Trash',      p:-15,g:-1},{e:'💩',n:'Bug Report',p:-20,g:-2},
+  {e:'🍩',n:'Stale Donut',p:-5, g:-1},{e:'🦠',n:'Virus',    p:-25,g:-2},
+  {e:'📉',n:'Downtrend',  p:-18,g:-1},{e:'🔥',n:'Dumpster Fire',p:-30,g:-2},
+  {e:'😴',n:'Nap',        p:-12,g:-1},{e:'🍕',n:'Cold Pizza',p:-10,g:-1},
+];
+
+// ══════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════
+let peer = null, hostConn = null;
+let guestConns = {}; // peerId -> conn  (host side)
+let isHost = false;
+let myName = '';
+let myPeerId = '';
+let roomCode = ''; // host peer id shortened
+let players = []; // [{id,name,color,score,body,dx,dy,ndx,ndy,alive}]
+let myIndex = -1;
+let foods = [];
+let gameRunning = false;
+let gameTimer = null, elapsed = 0, timerInterval;
+let COLS = 30, ROWS = 24;
+let lastDirTime = 0;
+
+// ══════════════════════════════════════════════════════════════
+//  SCREEN HELPERS
+// ══════════════════════════════════════════════════════════════
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id === 'gameScreen') {
+    document.getElementById('dpadWrap').style.display = '';
+  } else {
+    document.getElementById('dpadWrap').style.display = 'none';
+  }
+}
+
+function backToMenu(){
+  if(gameTimer) clearInterval(gameTimer);
+  if(timerInterval) clearInterval(timerInterval);
+  gameRunning = false;
+  
+  if(peer){
+    try {
+      if(hostConn) hostConn.close();
+      Object.values(guestConns).forEach(c => c.close());
+      peer.destroy();
+    } catch(e) { console.error(e); }
+  }
+  
+  hostConn = null;
+  guestConns = {};
+  myIndex = -1;
+  players = [];
+  foods = [];
+  showScreen('menuScreen');
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════════════════════════
+let toastT;
+function showToast(msg, type='info'){
+  const el=document.getElementById('toast');
+  const colors={good:['#166534','#86efac','#3fb950'],bad:['#7f1d1d','#fca5a5','#f85149'],info:['#1c2a3a','#93c5fd','#58a6ff']};
+  const [bg,fg,bdr]=colors[type]||colors.info;
+  el.style.cssText=`background:${bg};color:${fg};border:2px solid ${bdr};`;
+  el.textContent=msg;
+  el.classList.add('show');
+  clearTimeout(toastT);
+  toastT=setTimeout(()=>el.classList.remove('show'),2200);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  PEER SETUP
+// ══════════════════════════════════════════════════════════════
+function genCode(){ return Math.random().toString(36).substr(2,6).toUpperCase(); }
+
+function initPeer(id, onOpen){
+  cleanup();
+  const opts = {host:'0.peerjs.com', port:443, path:'/', secure:true, debug:0};
+  peer = id ? new Peer(id, opts) : new Peer(opts);
+  peer.on('open', pid=>{ myPeerId=pid; onOpen(pid); });
+  peer.on('error', e=>{ showToast('Connection error: '+e.type,'bad'); console.error(e); });
+}
+
+function cleanup(){
+  if(gameTimer) clearInterval(gameTimer);
+  if(timerInterval) clearInterval(timerInterval);
+  gameRunning=false;
+  if(peer){ try{peer.destroy();}catch(e){} peer=null; }
+  hostConn=null; guestConns={};
+}
+
+// ══════════════════════════════════════════════════════════════
+//  HOST FLOW
+// ══════════════════════════════════════════════════════════════
+function showHost(){
+  myName = document.getElementById('myName').value.trim() || 'Player 1';
+  isHost = true;
+  showScreen('hostScreen');
+  document.getElementById('roomCodeDisplay').textContent='......';
+  document.getElementById('hostStatus').textContent='Creating room…';
+  document.getElementById('hostPlayerList').innerHTML='';
+
+  const code = genCode();
+  roomCode = code;
+
+  initPeer('OSNAKE-'+code, pid=>{
+    document.getElementById('roomCodeDisplay').textContent=code;
+    document.getElementById('hostStatus').textContent='Waiting for players to join…';
+    players = [{id:pid, name:myName, color:P_COLORS[0], score:0, body:[], dx:1,dy:0,ndx:1,ndy:0, alive:true}];
+    myIndex = 0;
+    renderHostLobby();
+  });
+
+  peer.on('connection', conn=>{
+    conn.on('open',()=>{
+      if(gameRunning){ conn.send({type:'full'}); conn.close(); return; }
+      if(players.length>=4){ conn.send({type:'full'}); conn.close(); return; }
+      guestConns[conn.peer]=conn;
+      conn.on('data', d=>handleGuestMsg(conn.peer, d));
+      conn.on('close',()=>{ delete guestConns[conn.peer]; removePeer(conn.peer); renderHostLobby(); });
+      conn.send({type:'hello_back', yourIndex: players.length, colors: P_COLORS, allPlayers: players.map(p=>({id:p.id,name:p.name,color:p.color})) });
+    });
+    conn.on('data', d=>{ if(d.type==='hello'){ addGuest(conn.peer, d.name); renderHostLobby(); } });
+  });
+}
+
+function addGuest(pid, name){
+  const idx=players.length;
+  players.push({id:pid, name, color:P_COLORS[idx], score:0, body:[], dx:P_STARTS[idx].dx, dy:P_STARTS[idx].dy, ndx:P_STARTS[idx].dx, ndy:P_STARTS[idx].dy, alive:true});
+  broadcastAll({type:'lobby_update', players: players.map(p=>({id:p.id,name:p.name,color:p.color}))});
+  renderHostLobby();
+  showToast(name+' joined! 👋','info');
+}
+
+function removePeer(pid){
+  players = players.filter(p=>p.id!==pid);
+  broadcastAll({type:'lobby_update', players: players.map(p=>({id:p.id,name:p.name,color:p.color}))});
+}
+
+function renderHostLobby(){
+  const list=document.getElementById('hostPlayerList');
+  list.innerHTML=players.map((p,i)=>`
+    <div class="player-item">
+      <div class="player-dot" style="background:${p.color};"></div>
+      <div class="player-item-name" style="color:${p.color};">${p.name}</div>
+      <div class="player-item-role">${i===0?'Host':'Player '+(i+1)}</div>
+    </div>`).join('');
+  const st=document.getElementById('hostStatus');
+  const btn=document.getElementById('hostStartBtn');
+  if(players.length===1){ st.textContent='Waiting for players… (1/4)'; btn.disabled=true; btn.style.opacity='.4'; }
+  else { st.textContent=`${players.length} players ready!`; st.className='status-bar ok'; btn.disabled=false; btn.style.opacity='1'; }
+}
+
+function copyCode(){
+  const code=document.getElementById('roomCodeDisplay').textContent;
+  navigator.clipboard.writeText(code).then(()=>showToast('Code copied! '+code,'good')).catch(()=>showToast('Code: '+code,'info'));
+}
+
+function hostStartGame(){
+  if(players.length<2) return;
+  initGameState();
+  broadcastAll({type:'start', gameState: serializeState()});
+  startGameScreen();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  JOIN FLOW
+// ══════════════════════════════════════════════════════════════
+function showJoin(){
+  myName = document.getElementById('myName').value.trim() || ('Player '+(Math.floor(Math.random()*900)+100));
+  isHost = false;
+  showScreen('joinScreen');
+  document.getElementById('joinStatus').textContent='';
+}
+
+function joinGame(){
+  const code=document.getElementById('roomCodeInput').value.trim().toUpperCase();
+  if(code.length<4){ showToast('Enter the 6-letter room code','bad'); return; }
+  const st=document.getElementById('joinStatus');
+  st.textContent='Connecting…'; st.className='status-bar';
+
+  initPeer(null, pid=>{
+    myPeerId=pid;
+    hostConn=peer.connect('OSNAKE-'+code, {reliable:true});
+    hostConn.on('open',()=>{
+      hostConn.send({type:'hello', name:myName});
+      st.textContent='Connected! Waiting for host…'; st.className='status-bar ok';
+    });
+    hostConn.on('data', d=>handleHostMsg(d));
+    hostConn.on('close',()=>{ showToast('Disconnected from host','bad'); backToMenu(); });
+    hostConn.on('error',e=>{ st.textContent='Could not connect. Check the code.'; st.className='status-bar err'; });
+    peer.on('error',e=>{ st.textContent='Error: '+e.type; st.className='status-bar err'; });
+  });
+}
+
+function handleHostMsg(d){
+  if(d.type==='full'){ showToast('Room is full!','bad'); backToMenu(); return; }
+  if(d.type==='hello_back'){
+    myIndex=d.yourIndex;
+    players=d.allPlayers.map((p,i)=>({...p,score:0,body:[],dx:P_STARTS[i].dx,dy:P_STARTS[i].dy,ndx:P_STARTS[i].dx,ndy:P_STARTS[i].dy,alive:true}));
+    showScreen('waitScreen');
+    renderWaitLobby();
+  }
+  if(d.type==='lobby_update'){
+    players=d.players.map((p,i)=>({...p,score:0,body:[],dx:P_STARTS[i].dx,dy:P_STARTS[i].dy,ndx:P_STARTS[i].dx,ndy:P_STARTS[i].dy,alive:true}));
+    renderWaitLobby();
+  }
+  if(d.type==='start'){
+    deserializeState(d.gameState);
+    startGameScreen();
+  }
+  if(d.type==='tick'){
+    deserializeState(d.gameState);
+    renderGame();
+    updateHdr();
+  }
+  if(d.type==='game_over'){
+    deserializeState(d.gameState);
+    renderGame();
+    showGameOver();
+  }
+}
+
+function renderWaitLobby(){
+  const list=document.getElementById('waitPlayerList');
+  list.innerHTML=players.map((p,i)=>`
+    <div class="player-item">
+      <div class="player-dot" style="background:${p.color||P_COLORS[i]};"></div>
+      <div class="player-item-name" style="color:${p.color||P_COLORS[i]};">${p.name}</div>
+      <div class="player-item-role">${i===0?'Host':'Player '+(i+1)}</div>
+    </div>`).join('');
+  document.getElementById('waitStatus').textContent=`${players.length} player(s) in room`;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  GUEST → HOST MESSAGES
+// ══════════════════════════════════════════════════════════════
+function handleGuestMsg(pid, d){
+  if(d.type === 'dir'){
+    const idx = players.findIndex(p => p.id === pid);
+    if(idx >= 0 && players[idx].alive){
+      const s = players[idx];
+      if(d.dir === 'up' && s.dy !== 1){ s.ndx = 0; s.ndy = -1; }
+      else if(d.dir === 'down' && s.dy !== -1){ s.ndx = 0; s.ndy = 1; }
+      else if(d.dir === 'left' && s.dx !== 1){ s.ndx = -1; s.ndy = 0; }
+      else if(d.dir === 'right' && s.dx !== -1){ s.ndx = 1; s.ndy = 0; }
+    }
+  }
+  if(d.type === 'play_again'){ 
+    if(!gameRunning && players.filter(p => p.alive).length === 0){
+      playAgain();
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  GAME STATE
+// ══════════════════════════════════════════════════════════════
+function calcDims(){
+  const w = window.innerWidth;
+  const h = window.innerHeight - 88;
+  const minCols = 18, minRows = 14;
+  const maxCols = Math.floor(w / CELL);
+  const maxRows = Math.floor(h / CELL);
+  
+  COLS = Math.max(minCols, Math.min(maxCols, 40));
+  ROWS = Math.max(minRows, Math.min(maxRows, 30));
+  
+  const canvas = document.getElementById('gc');
+  if(canvas) {
+    canvas.width = COLS * CELL;
+    canvas.height = ROWS * CELL;
+    canvas.style.width = '100%';
+    canvas.style.height = 'auto';
+  }
+}
+
+const canvas=document.getElementById('gc');
+const ctx=canvas.getContext('2d');
+
+function initGameState(){
+  calcDims();
+  players.forEach((p,i)=>{
+    const margin = 3;
+    const maxX = COLS - margin - 5;
+    const minX = margin;
+    const sx = Math.floor(minX + (Math.random() * (maxX - minX)));
+    const sy = Math.floor(ROWS / 2);
+    
+    const body = [];
+    const startDir = P_STARTS[i];
+    for(let j = 0; j < 5; j++) {
+      body.push({
+        x: sx - (startDir.dx * j),
+        y: sy - (startDir.dy * j)
+      });
+    }
+    p.body = body;
+    p.dx = P_STARTS[i].dx;
+    p.dy = P_STARTS[i].dy;
+    p.ndx = P_STARTS[i].dx;
+    p.ndy = P_STARTS[i].dy;
+    p.score = 0;
+    p.alive = true;
+  });
+  foods=[];
+  const total=Math.min(8+players.length*2,16);
+  for(let i=0;i<total;i++) spawnFood(i<Math.ceil(total*.62));
+  elapsed=0;
+}
+
+function spawnFood(good){
+  let pos;
+  let attempts = 0;
+  const maxAttempts = 500;
+  
+  do {
+    pos = {x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS)};
+    attempts++;
+    
+    const occupiedBySnake = players.some(p => 
+      p.alive && p.body && p.body.some(b => b.x === pos.x && b.y === pos.y)
+    );
+    const occupiedByFood = foods.some(f => f.x === pos.x && f.y === pos.y);
+    
+    if (!occupiedBySnake && !occupiedByFood) break;
+    
+    if (attempts >= maxAttempts) {
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          const occBySnake = players.some(p => 
+            p.alive && p.body && p.body.some(b => b.x === x && b.y === y)
+          );
+          const occByFood = foods.some(f => f.x === x && f.y === y);
+          if (!occBySnake && !occByFood) {
+            pos = {x, y};
+            break;
+          }
+        }
+        if (pos) break;
+      }
+      break;
+    }
+  } while (attempts < maxAttempts);
+  
+  const pool = good ? GOOD_ITEMS : BAD_ITEMS;
+  const it = pool[Math.floor(Math.random() * pool.length)];
+  foods.push({...pos, ...it, good, pulse: Math.random() * Math.PI * 2});
+}
+
+function serializeState(){
+  return {players:players.map(p=>({...p,body:[...p.body]})),foods:[...foods],elapsed,COLS,ROWS};
+}
+
+function deserializeState(s){
+  players=s.players; foods=s.foods; elapsed=s.elapsed;
+  COLS=s.COLS; ROWS=s.ROWS;
+  canvas.width=COLS*CELL; canvas.height=ROWS*CELL;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  GAME LOOP (HOST ONLY)
+// ══════════════════════════════════════════════════════════════
+function startGameScreen(){
+  calcDims();
+  showScreen('gameScreen');
+  document.getElementById('dpadWrap').style.display = '';
+  updateHdr();
+  renderGame();
+  if(!isHost) return;
+
+  clearInterval(gameTimer); clearInterval(timerInterval);
+  gameRunning=true; elapsed=0;
+  timerInterval=setInterval(()=>{
+    elapsed++;
+    const m=Math.floor(elapsed/60),s=elapsed%60;
+    document.getElementById('hdrTime').textContent=`${m}:${String(s).padStart(2,'0')}`;
+  },1000);
+
+  gameTimer=setInterval(()=>{
+    if(!gameRunning) return;
+    tick();
+    foods.forEach(f=>f.pulse=(f.pulse||0)+0.1);
+    const alive = players.filter(p => p.alive).length;
+    
+    if(alive <= 1 && players.length > 1){
+      gameRunning=false;
+      clearInterval(gameTimer); clearInterval(timerInterval);
+      broadcastAll({type:'game_over', gameState:serializeState()});
+      showGameOver();
+    } else if(alive === 0) {
+      gameRunning=false;
+      clearInterval(gameTimer); clearInterval(timerInterval);
+      broadcastAll({type:'game_over', gameState:serializeState()});
+      showGameOver();
+    } else {
+      broadcastAll({type:'tick', gameState:serializeState()});
+      renderGame();
+      updateHdr();
+    }
+  }, TICK);
+}
+
+function tick(){
+  players.forEach(p=>{
+    if(!p.alive) return;
+    p.dx=p.ndx; p.dy=p.ndy;
+    const head={x:p.body[0].x+p.dx, y:p.body[0].y+p.dy};
+
+    if(head.x<0||head.x>=COLS||head.y<0||head.y>=ROWS){ p.alive=false; return; }
+    if(p.body.slice(1).some(b=>b.x===head.x&&b.y===head.y)){ p.alive=false; return; }
+    for(const other of players){
+      if(other===p||!other.alive) continue;
+      if(other.body.some(b=>b.x===head.x&&b.y===head.y)){ p.alive=false; return; }
+    }
+
+    p.body.unshift(head);
+    const fi=foods.findIndex(f=>f.x===head.x&&f.y===head.y);
+    if(fi>=0){
+      const f=foods[fi]; foods.splice(fi,1);
+      p.score = Math.max(0, p.score + f.p);
+      
+      if(f.good){ 
+        const tail = p.body[p.body.length - 1];
+        for(let i = 0; i < f.g; i++) {
+          p.body.push({...tail});
+        }
+      } else { 
+        const removeCount = Math.min(Math.abs(f.g), p.body.length - 3);
+        for(let i = 0; i < removeCount; i++) {
+          if(p.body.length > 3) p.body.pop();
+        }
+      }
+      spawnFood(Math.random() > 0.38);
+    } else {
+      p.body.pop();
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  DIRECTION INPUT
+// ══════════════════════════════════════════════════════════════
+function applyDir(s, dir){
+  if(dir==='up'    && s.dy!== 1){s.ndx=0;s.ndy=-1;}
+  else if(dir==='down'  && s.dy!==-1){s.ndx=0;s.ndy=1;}
+  else if(dir==='left'  && s.dx!== 1){s.ndx=-1;s.ndy=0;}
+  else if(dir==='right' && s.dx!==-1){s.ndx=1;s.ndy=0;}
+}
+
+function sendDir(dir){
+  const me = players[myIndex];
+  if(!me || !me.alive) return;
+  
+  const now = Date.now();
+  if(now - lastDirTime < 30) return;
+  lastDirTime = now;
+  
+  const dpBtn = document.getElementById(`dp${dir.charAt(0).toUpperCase() + dir.slice(1)}`);
+  if(dpBtn) {
+    dpBtn.style.transform = 'scale(0.9)';
+    setTimeout(() => { if(dpBtn) dpBtn.style.transform = ''; }, 100);
+  }
+  
+  if(isHost){ 
+    applyDir(me, dir); 
+  } else if(hostConn){ 
+    hostConn.send({type:'dir', dir}); 
+  }
+}
+
+document.addEventListener('keydown',e=>{
+  const map={ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',
+             w:'up',s:'down',a:'left',d:'right',W:'up',S:'down',A:'left',D:'right'};
+  const dir=map[e.key];
+  if(dir){ e.preventDefault(); sendDir(dir); }
+});
+
+// ══════════════════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════════════════
+function renderGame(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#0a1220'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  ctx.strokeStyle='#0d1f35'; ctx.lineWidth=.5;
+  for(let x=0;x<=COLS;x++){ctx.beginPath();ctx.moveTo(x*CELL,0);ctx.lineTo(x*CELL,canvas.height);ctx.stroke();}
+  for(let y=0;y<=ROWS;y++){ctx.beginPath();ctx.moveTo(0,y*CELL);ctx.lineTo(canvas.width,y*CELL);ctx.stroke();}
+
+  foods.forEach(f=>{
+    const cx=f.x*CELL+CELL/2, cy=f.y*CELL+CELL/2;
+    f.pulse=(f.pulse||0)+.05;
+    const pulse=.88+Math.sin(f.pulse)*.12;
+    const rc=f.good?'#3fb950':'#f85149';
+    const bg=f.good?'rgba(63,185,80,.18)':'rgba(248,81,73,.18)';
+
+    ctx.save();
+    ctx.globalAlpha=.5+Math.sin(f.pulse)*.25;
+    ctx.strokeStyle=rc; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(cx,cy,CELL*.55*pulse,0,Math.PI*2); ctx.stroke();
+    ctx.restore();
+
+    ctx.fillStyle=bg;
+    ctx.beginPath(); ctx.arc(cx,cy,CELL*.5,0,Math.PI*2); ctx.fill();
+
+    ctx.font=`${Math.round(CELL*.7)}px serif`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.globalAlpha=1;
+    ctx.fillText(f.e, cx, cy+1);
+
+    ctx.font=`bold ${Math.round(CELL*.28)}px Nunito,sans-serif`;
+    ctx.fillStyle=f.good?'#3fb950':'#f85149';
+    ctx.globalAlpha=.85;
+    ctx.fillText((f.p>0?'+':'')+f.p, cx, cy+CELL*.72);
+    ctx.globalAlpha=1;
+  });
+
+  players.forEach((p,pi)=>{
+    if(!p.body||p.body.length===0) return;
+    p.body.forEach((seg,i)=>{
+      const a=i===0?1:Math.max(.2,1-i/(p.body.length*1.1));
+      ctx.globalAlpha=a;
+      ctx.fillStyle=i===0?P_HEAD_COL[pi]:p.color;
+      ctx.beginPath();
+      if(i===0) ctx.roundRect(seg.x*CELL+1,seg.y*CELL+1,CELL-2,CELL-2,6);
+      else ctx.roundRect(seg.x*CELL+2,seg.y*CELL+2,CELL-4,CELL-4,4);
+      ctx.fill();
+      if(i===0){
+        ctx.globalAlpha=p.alive?.9:.35;
+        ctx.font=`${CELL-7}px serif`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText('👁',seg.x*CELL+CELL/2,seg.y*CELL+CELL/2);
+      }
+    });
+    ctx.globalAlpha=1;
+    if(p.alive && p.body.length>0){
+      const hx=p.body[0].x*CELL+CELL/2, hy=p.body[0].y*CELL-3;
+      ctx.font=`bold ${Math.round(CELL*.44)}px Nunito,sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='bottom';
+      ctx.fillStyle=P_HEAD_COL[pi]; ctx.globalAlpha=.9;
+      ctx.fillText(p.name,hx,hy); ctx.globalAlpha=1;
+    }
+  });
+}
+
+function updateHdr(){
+  document.getElementById('hdrScores').innerHTML=players.map((p,i)=>`
+    <div class="hdr-score">
+      <div class="hdr-dot" style="background:${p.color};${!p.alive?'opacity:.3':''}"></div>
+      <span style="color:${p.color};${!p.alive?'opacity:.4':''}">${p.name}</span>
+      <span style="font-family:'Fredoka One',cursive;color:${p.color};">${p.score}</span>
+      <span class="hdr-len">🐍${p.body?p.body.length:0}</span>
+      ${!p.alive?'<span style="font-size:10px;color:#f85149;">💀</span>':''}
+    </div>`).join('');
+  const m=Math.floor(elapsed/60),s=elapsed%60;
+  document.getElementById('hdrTime').textContent=`${m}:${String(s).padStart(2,'0')}`;
+}
+
+function showGameOver(){
+  document.getElementById('dpadWrap').style.display = 'none';
+  const sorted=[...players].sort((a,b)=>b.score-a.score);
+  const medals=['🥇','🥈','🥉','4️⃣'];
+  document.getElementById('goTitle').textContent = players.length>1 ? (sorted[0].name+' Wins! 🏆') : 'Game Over! 💀';
+  document.getElementById('goResults').innerHTML=sorted.map((p,i)=>`
+    <div class="result-row">
+      <div class="result-medal">${medals[i]}</div>
+      <div class="result-name" style="color:${p.color};">${p.name}</div>
+      <div class="result-score">${p.score} pts</div>
+      <div class="result-len">🐍${p.body?p.body.length:0}</div>
+    </div>`).join('');
+  document.getElementById('gameOverlay').style.display='flex';
+  if(!isHost) document.getElementById('playAgainBtn').textContent='Wait for host…';
+}
+
+function playAgain(){
+  if(!isHost){ showToast('Only the host can restart','info'); return; }
+  document.getElementById('gameOverlay').style.display='none';
+  document.getElementById('dpadWrap').style.display = '';
+  initGameState();
+  broadcastAll({type:'start', gameState:serializeState()});
+  startGameScreen();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  BROADCAST
+// ══════════════════════════════════════════════════════════════
+function broadcastAll(msg){
+  Object.values(guestConns).forEach(c=>{ try{c.send(msg);}catch(e){} });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════
+showScreen('menuScreen');
+window.addEventListener('resize',()=>{ if(gameRunning||document.getElementById('gameScreen').classList.contains('active')){ calcDims(); renderGame(); } });
+</script>
+</body>
+</html>
